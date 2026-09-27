@@ -1,0 +1,7 @@
+# dsh-web-access. Keep tool-web disabled (TUI preset already does). Both register web_search.
+- insert:
+    - id: dsh-web-access
+      name: dsh-web-access
+      config:
+        gate: true
+        maxInlineContentChars: 30000
