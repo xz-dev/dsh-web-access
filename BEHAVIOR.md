@@ -1,6 +1,6 @@
 # Behaviour checklist
 
-Source: `pi-web-access` 0.32.0 (MIT, Nico Bailon). User config: `~/.pi/web-search.json` keys only — `provider: [tavily, perplexity]`, `workflow: none`, Firecrawl base URL, tools `webSearch` / `sourceCheck` / `fetchContent` / `getSearchContent` enabled, commands `websearch` / `curator` / `search` enabled. Secrets stay in that file or `TAVILY_API_KEY`, `PERPLEXITY_API_KEY`, `FIRECRAWL_API_KEY`.
+Source: `pi-web-access` 0.32.0 (MIT, Nico Bailon). Pi's `web-search.json` is not read. Its settings map to the plugin config (`providers`, `tools.*`, `commands.*`); its keys and Firecrawl base URL map to DSH credentials refs `TAVILY_API_KEY`, `PERPLEXITY_API_KEY`, `FIRECRAWL_API_KEY`, `FIRECRAWL_BASE_URL`. `$ENV` indirection and `!shell` credentials do not exist here; the credentials service already layers the launch environment over the stored file.
 
 DSH TUI preset disables `tool-web` (`dsh-tui` `cordis.patch.yml`). Built-in `web_search` / `web_fetch` are therefore not on the daily tool list. `ctx.web` still pins `searchProvider: deepseek-official` and `fetchProvider: http`. This plugin does not register another search provider (that would be ambiguous or would ignore the pin). HTML fetch goes through `ctx.web.fetch`.
 

@@ -6,8 +6,8 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createActivation } from "./activation.js";
 import { selectStored } from "./content.js";
 import { fetchContent } from "./fetch-content.js";
-import { loadPiWebSearchConfig } from "./pi-config.js";
 import { configuredProviders, presentSearch, searchQuery } from "./search.js";
+import { createSecrets } from "./secrets.js";
 import { buildResearchArtifact, formatSourceCheck } from "./source-check.js";
 import { createStore, newId } from "./store.js";
 
@@ -19,7 +19,18 @@ const HEAVY = ["web_search", "source_check", "fetch_content", "get_search_conten
 export const Config = z.object({
 	gate: z.boolean().default(true),
 	maxInlineContentChars: z.number().min(1).max(200_000).default(30_000),
-	providers: z.array(z.string()).default([]),
+	providers: z.array(z.string()).default([]).description("Search providers run together (tavily, perplexity). Empty = both."),
+	tools: z.object({
+		webSearch: z.boolean().default(true),
+		sourceCheck: z.boolean().default(true),
+		fetchContent: z.boolean().default(true),
+		getSearchContent: z.boolean().default(true),
+	}).default({}),
+	commands: z.object({
+		search: z.boolean().default(true),
+		websearch: z.boolean().default(true),
+		curator: z.boolean().default(true),
+	}).default({}),
 });
 
 function textResult(text) {
@@ -31,13 +42,6 @@ function textResult(text) {
 		},
 		render: (_args, value) => [{ type: "text", text: value.text }],
 	};
-}
-
-function toolEnabled(config, key) {
-	const override = config.tools?.[key]?.enabled;
-	if (typeof override === "boolean") return override;
-	if (key === "webSearch" || key === "sourceCheck") return config.webSearch?.enabled !== false;
-	return true;
 }
 
 function httpFetch(ctx) {
@@ -54,15 +58,16 @@ function httpFetch(ctx) {
 }
 
 export function apply(ctx, config = {}) {
-	const pi = loadPiWebSearchConfig().config;
 	const maxChars = config.maxInlineContentChars ?? 30_000;
-	const searchOptions = { providers: config.providers, piConfig: pi };
+	const secrets = createSecrets(ctx);
+	const searchOptions = { providers: config.providers, secrets };
 	const store = createStore();
+	const on = (group, key) => config[group]?.[key] !== false;
 	const enabled = {
-		web_search: toolEnabled(pi, "webSearch"),
-		source_check: toolEnabled(pi, "sourceCheck"),
-		fetch_content: toolEnabled(pi, "fetchContent"),
-		get_search_content: toolEnabled(pi, "getSearchContent"),
+		web_search: on("tools", "webSearch"),
+		source_check: on("tools", "sourceCheck"),
+		fetch_content: on("tools", "fetchContent"),
+		get_search_content: on("tools", "getSearchContent"),
 	};
 	const heavy = HEAVY.filter((toolName) => enabled[toolName]);
 	const gate = createActivation(heavy);
@@ -77,7 +82,7 @@ export function apply(ctx, config = {}) {
 				numResults: { type: "integer", description: "Results per query (1-20, default 5)" },
 				recencyFilter: { type: "string", enum: ["day", "week", "month", "year"] },
 				domainFilter: { type: "array", items: { type: "string" }, description: "Domains; prefix - to exclude" },
-				provider: { type: "json", description: "tavily, perplexity, or a list of those. Omit to use web-search.json." },
+				provider: { type: "json", description: "tavily, perplexity, or a list of those. Omit to use the configured providers." },
 				workflow: { type: "string", enum: ["none", "summary-review", "auto-summary"] },
 				includeContent: { type: "boolean" },
 				proxy: { type: "string" },
@@ -146,6 +151,7 @@ export function apply(ctx, config = {}) {
 						timestamp: args.timestamp,
 						frames: args.frames,
 						signal: exec.signal,
+						secrets,
 						httpFetch: httpFetch(ctx),
 						search: (query) => searchQuery(query, { ...searchOptions, signal: exec.signal }),
 					});
@@ -205,7 +211,7 @@ export function apply(ctx, config = {}) {
 				if (args.fetchContent) {
 					for (const result of unique.slice(0, 5)) {
 						try {
-							const page = await fetchContent(result.url, { signal: exec.signal, httpFetch: httpFetch(ctx) });
+							const page = await fetchContent(result.url, { signal: exec.signal, secrets, httpFetch: httpFetch(ctx) });
 							fetched.push({ url: result.url, content: page.fullText || page.content || "", error: null });
 						} catch (error) {
 							fetched.push({ url: result.url, content: "", error: error instanceof Error ? error.message : String(error) });
@@ -267,7 +273,7 @@ export function apply(ctx, config = {}) {
 		async execute(_args, exec) {
 			if (!exec.agent) throw new Error("web_enable requires an agent.");
 			const names = gate.enable(exec.agent);
-			return { text: names.length ? `Enabled: ${names.join(", ")}.` : "No web tools are enabled in web-search.json." };
+			return { text: names.length ? `Enabled: ${names.join(", ")}.` : "No web tools are enabled in the dsh-web-access config." };
 		},
 	}));
 
@@ -284,7 +290,7 @@ export function apply(ctx, config = {}) {
 		ctx.on("agent/created", ({ agent, source }) => gate.onCreated(agent, source, (filter) => agent.ctx.tools.restrict(filter)));
 	}
 
-	const commandEnabled = (commandName) => pi.commands?.[commandName]?.enabled !== false;
+	const commandEnabled = (commandName) => on("commands", commandName);
 	if (commandEnabled("search")) {
 		ctx.commands.register({
 			name: "search",

@@ -1,25 +1,25 @@
 // Cache-only Firecrawl scrape (lockdown) unless FIRECRAWL_FRESH_SCRAPE=1. v2 default, same as Pi.
+// Base URL and key are the FIRECRAWL_BASE_URL / FIRECRAWL_API_KEY secrets.
 
-import { loadPiWebSearchConfig, redact, resolveKey } from "./pi-config.js";
+import { redact } from "./secrets.js";
 
-export function configuredFirecrawlBase() {
-	const env = process.env.FIRECRAWL_BASE_URL?.trim();
-	const file = loadPiWebSearchConfig().config.firecrawlBaseUrl;
-	const value = env || (typeof file === "string" ? file.trim() : "");
+const envSecrets = async (name) => process.env[name]?.trim() || undefined;
+
+export function normalizeFirecrawlBase(value) {
 	if (!value) return undefined;
 	const url = new URL(value);
-	if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("firecrawlBaseUrl must be HTTP(S)");
-	if (url.username || url.password) throw new Error("firecrawlBaseUrl must not include credentials");
+	if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("FIRECRAWL_BASE_URL must be HTTP(S)");
+	if (url.username || url.password) throw new Error("FIRECRAWL_BASE_URL must not include credentials");
 	url.search = "";
 	url.hash = "";
 	url.pathname = url.pathname.replace(/\/+$/, "");
 	return url.toString().replace(/\/+$/, "");
 }
 
-export async function scrapeFirecrawl(target, { fetchImpl = globalThis.fetch, signal } = {}) {
-	const base = configuredFirecrawlBase();
+export async function scrapeFirecrawl(target, { fetchImpl = globalThis.fetch, signal, secrets = envSecrets } = {}) {
+	const base = normalizeFirecrawlBase(await secrets("FIRECRAWL_BASE_URL"));
 	if (!base) return null;
-	const apiKey = resolveKey({ envName: "FIRECRAWL_API_KEY", configKey: "firecrawlApiKey" });
+	const apiKey = await secrets("FIRECRAWL_API_KEY");
 	const fresh = process.env.FIRECRAWL_FRESH_SCRAPE === "1" || process.env.FIRECRAWL_FRESH_SCRAPE === "true";
 	const version = (process.env.FIRECRAWL_API_VERSION || "v2").trim() || "v2";
 	const headers = { "Content-Type": "application/json" };

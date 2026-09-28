@@ -1,7 +1,7 @@
 // User routing: provider array searches those providers at once (Pi resolveProvider → "all").
-// Defaults when the Pi file lists none: tavily then perplexity, matching ~/.pi/web-search.json shape.
+// Default when the plugin config lists none: tavily then perplexity.
 
-import { hasKey, redact, resolveKey } from "./pi-config.js";
+import { redact } from "./secrets.js";
 
 const TAVILY_URL = "https://api.tavily.com/search";
 const PERPLEXITY_URL = "https://api.perplexity.ai/chat/completions";
@@ -11,10 +11,6 @@ const perplexityHits = [];
 export function configuredProviders(config = {}) {
 	const fromPlugin = config.providers;
 	if (Array.isArray(fromPlugin) && fromPlugin.length > 0) return normalizeList(fromPlugin);
-	const file = config.piConfig ?? {};
-	const selected = file.searchProvider ?? file.provider;
-	if (Array.isArray(selected) && selected.length > 0) return normalizeList(selected);
-	if (typeof selected === "string" && selected.trim() && selected !== "auto" && selected !== "all") return normalizeList([selected]);
 	return ["tavily", "perplexity"];
 }
 
@@ -29,16 +25,9 @@ function normalizeList(list) {
 	return out;
 }
 
-export function providerAvailable(name) {
-	if (name === "tavily") return hasKey({ envName: "TAVILY_API_KEY", configKey: "tavilyApiKey" });
-	if (name === "perplexity") return hasKey({ envName: "PERPLEXITY_API_KEY", configKey: "perplexityApiKey" });
-	return false;
-}
+const KEY_NAMES = { tavily: "TAVILY_API_KEY", perplexity: "PERPLEXITY_API_KEY" };
 
-function keyFor(name) {
-	if (name === "tavily") return resolveKey({ envName: "TAVILY_API_KEY", configKey: "tavilyApiKey" });
-	return resolveKey({ envName: "PERPLEXITY_API_KEY", configKey: "perplexityApiKey" });
-}
+const envSecrets = async (name) => process.env[name]?.trim() || undefined;
 
 function clampCount(value) {
 	const n = Number.isFinite(value) ? Math.floor(value) : 5;
@@ -59,8 +48,8 @@ function domainSplit(domainFilter) {
 }
 
 async function searchTavily(query, options, fetchImpl) {
-	const apiKey = keyFor("tavily");
-	if (!apiKey) throw new Error("Tavily API key not found. Set TAVILY_API_KEY or tavilyApiKey in web-search.json.");
+	const apiKey = options.apiKey;
+	if (!apiKey) throw new Error("Tavily API key not found. Store TAVILY_API_KEY in DSH credentials.");
 	const numResults = clampCount(options.numResults);
 	const domains = domainSplit(options.domainFilter);
 	const body = {
@@ -111,8 +100,8 @@ export function resetPerplexityRateLimit() {
 }
 
 async function searchPerplexity(query, options, fetchImpl) {
-	const apiKey = keyFor("perplexity");
-	if (!apiKey) throw new Error("Perplexity API key not found. Set PERPLEXITY_API_KEY or perplexityApiKey in web-search.json.");
+	const apiKey = options.apiKey;
+	if (!apiKey) throw new Error("Perplexity API key not found. Store PERPLEXITY_API_KEY in DSH credentials.");
 	notePerplexity(options.now ?? Date.now());
 	const numResults = clampCount(options.numResults);
 	const body = {
@@ -154,11 +143,14 @@ const SEARCHERS = { tavily: searchTavily, perplexity: searchPerplexity };
 
 export async function searchQuery(query, options, fetchImpl = globalThis.fetch) {
 	const requested = options.provider ? normalizeList([].concat(options.provider)) : configuredProviders(options);
-	const available = requested.filter(providerAvailable);
+	const secrets = options.secrets ?? envSecrets;
+	const keys = {};
+	for (const name of requested) keys[name] = await secrets(KEY_NAMES[name]);
+	const available = requested.filter((name) => keys[name]);
 	if (available.length === 0) {
-		throw new Error(`No configured search provider available (${requested.join(", ")}). Set TAVILY_API_KEY and/or PERPLEXITY_API_KEY.`);
+		throw new Error(`No configured search provider available (${requested.join(", ")}). Store TAVILY_API_KEY and/or PERPLEXITY_API_KEY in DSH credentials.`);
 	}
-	const settled = await Promise.allSettled(available.map((name) => SEARCHERS[name](query, options, fetchImpl)));
+	const settled = await Promise.allSettled(available.map((name) => SEARCHERS[name](query, { ...options, apiKey: keys[name] }, fetchImpl)));
 	if (options.signal?.aborted) throw new Error("Aborted");
 	const successes = [];
 	const failures = [];

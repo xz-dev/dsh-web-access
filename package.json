@@ -1,7 +1,7 @@
 {
   "name": "dsh-web-access",
-  "version": "0.1.0",
-  "description": "Port of pi-web-access to DeepSeek Harness: Tavily/Perplexity search providers over ctx.web, GitHub/PDF/YouTube-aware fetch provider with Firecrawl fallback, source_check, get_search_content, and web_enable gating.",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness web tools ported from pi-web-access: Tavily/Perplexity search, GitHub/PDF/YouTube-aware fetch with Firecrawl fallback, source_check, get_search_content, and web_enable gating. Keys come from DSH credentials.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
@@ -45,6 +45,7 @@
     "node": ">=20"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-credentials": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tools": "0.1.7-rc.2"
   },
   "dependencies": {

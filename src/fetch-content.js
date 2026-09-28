@@ -22,7 +22,7 @@ export async function fetchContent(raw, options = {}) {
 	if (youtubeId(url)) {
 		if (!options.search) throw new Error("YouTube summary needs a Perplexity search function.");
 		const video = await summarizeYouTube(url, options.prompt, (query) => options.search(query));
-		if (!video) throw new Error("Could not extract YouTube video content. Set PERPLEXITY_API_KEY or GEMINI_API_KEY.");
+		if (!video) throw new Error("Could not extract YouTube video content. Store PERPLEXITY_API_KEY in DSH credentials.");
 		return video;
 	}
 
@@ -61,7 +61,7 @@ export async function fetchContent(raw, options = {}) {
 
 async function tryFirecrawl(url, options, cause) {
 	try {
-		const scraped = await scrapeFirecrawl(url, { fetchImpl: options.fetchImpl, signal: options.signal });
+		const scraped = await scrapeFirecrawl(url, { fetchImpl: options.fetchImpl, signal: options.signal, secrets: options.secrets });
 		return scraped;
 	} catch (error) {
 		if (!cause) throw error;

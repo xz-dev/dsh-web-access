@@ -1,4 +1,4 @@
-// Local unpdf text extraction. Datalab and Gemini PDF tiers are unused: no keys in web-search.json.
+// Local unpdf text extraction. Datalab and Gemini PDF tiers are unused: no keys configured.
 
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
